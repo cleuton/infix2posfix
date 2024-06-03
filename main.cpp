@@ -5,6 +5,7 @@
 #include <vector>
 #include <cctype>
 #include <map>
+#include <algorithm>
 
 // Verifica se um caractere é operador
 bool isOperator(char c) {
@@ -19,7 +20,7 @@ int precedence(char op) {
     return 0;
 }
 
-// Verifica se um caractere é uma função
+// Verifica se uma string é uma função válida
 bool isFunction(const std::string& token) {
     return token == "EXP" || token == "SQR" || token == "SIN" || token == "COS";
 }
@@ -68,11 +69,48 @@ std::vector<std::string> tokenize(const std::string& infix) {
     return tokens;
 }
 
+// Verifica se uma expressão infixa é válida
+std::string validateExpression(const std::vector<std::string>& tokens) {
+    int parenthesesBalance = 0;
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        const auto& token = tokens[i];
+        if (token == "(") {
+            parenthesesBalance++;
+        } else if (token == ")") {
+            parenthesesBalance--;
+            if (parenthesesBalance < 0) {
+                return "Mismatched parentheses";
+            }
+        } else if (isOperator(token[0]) && token.size() == 1) {
+            if (i == 0 || i == tokens.size() - 1) {
+                return "Invalid expression"; // Operador no início ou no fim
+            }
+            if (isOperator(tokens[i + 1][0]) && tokens[i + 1].size() == 1) {
+                return "Invalid expression"; // Operadores duplos
+            }
+        } else if (isFunction(token)) {
+            if (i + 1 >= tokens.size() || tokens[i + 1] != "(") {
+                return "Invalid expression"; // Função deve ser seguida por '('
+            }
+        } else if (std::isdigit(token[0]) || (token.size() > 1 && std::isdigit(token[1]))) {
+            // Número é considerado válido
+        } else {
+            return "Invalid expression";
+        }
+    }
+    return parenthesesBalance == 0 ? "Valid" : "Mismatched parentheses";
+}
+
 // Converte uma expressão infixa para posfixa usando o algoritmo de Shunting Yard
 std::string infixToPostfix(const std::string& infix) {
     std::stack<std::string> operators;
     std::stringstream output;
     auto tokens = tokenize(infix);
+
+    std::string validationResult = validateExpression(tokens);
+    if (validationResult != "Valid") {
+        return validationResult;
+    }
 
     for (const auto& token : tokens) {
         if (std::isdigit(token[0]) || (token.size() > 1 && std::isdigit(token[1]))) {
@@ -90,14 +128,18 @@ std::string infixToPostfix(const std::string& infix) {
                 output << operators.top() << ' ';
                 operators.pop();
             }
-            operators.pop(); // Remove o '('
+            if (!operators.empty() && operators.top() == "(") {
+                operators.pop(); // Remove o '('
+            } else {
+                return "Mismatched parentheses";
+            }
             if (!operators.empty() && isFunction(operators.top())) {
                 output << operators.top() << ' ';
                 operators.pop();
             }
         } else if (isOperator(token[0])) {
-            // Token é um operador
-            while (!operators.empty() && precedence(operators.top()[0]) >= precedence(token[0])) {
+            while (!operators.empty() && ((token[0] != '^' && precedence(operators.top()[0]) >= precedence(token[0])) ||
+                   (token[0] == '^' && precedence(operators.top()[0]) > precedence(token[0])))) {
                 output << operators.top() << ' ';
                 operators.pop();
             }
@@ -107,6 +149,9 @@ std::string infixToPostfix(const std::string& infix) {
 
     // Esvazia a pilha de operadores
     while (!operators.empty()) {
+        if (operators.top() == "(") {
+            return "Mismatched parentheses";
+        }
         output << operators.top() << ' ';
         operators.pop();
     }
@@ -114,22 +159,34 @@ std::string infixToPostfix(const std::string& infix) {
     return output.str();
 }
 
-// Função principal para teste
+// Função de teste
+void runTests() {
+    struct TestCase {
+        std::string infix;
+        std::string expected;
+    };
+
+    std::vector<TestCase> testCases = {
+        {"3+4*2/(1-5)^2^3", "3 4 2 * 1 5 - 2 3 ^ ^ / + "},
+        {"SIN(3+4)*COS(2-1)", "3 4 + SIN 2 1 - COS * "},
+        {"-3+4*-2/(1--5)^2^3", "0 3 - 4 0 2 - * 1 0 5 - - / 2 3 ^ ^ + "},
+        {"3++4", "Invalid expression"},
+        {"SIN(3+4)*INVALID(2-1)", "Invalid expression"},
+        {"3+4**2", "Invalid expression"},
+        {"(3+4", "Mismatched parentheses"}
+    };
+
+    for (const auto& test : testCases) {
+        std::string result = infixToPostfix(test.infix);
+        std::cout << "Infix: " << test.infix << std::endl;
+        std::cout << "Expected Postfix: " << test.expected << std::endl;
+        std::cout << "Actual Postfix: " << result << std::endl;
+        std::cout << (result == test.expected ? "PASS" : "FAIL") << std::endl;
+        std::cout << "-----------------------" << std::endl;
+    }
+}
+
 int main() {
-    std::string infix1 = "3+4*2/(1-5)^2^3";
-    std::string postfix1 = infixToPostfix(infix1);
-    std::cout << "Infix: " << infix1 << std::endl;
-    std::cout << "Postfix: " << postfix1 << std::endl;
-
-    std::string infix2 = "SIN(3+4)*COS(2-1)";
-    std::string postfix2 = infixToPostfix(infix2);
-    std::cout << "Infix: " << infix2 << std::endl;
-    std::cout << "Postfix: " << postfix2 << std::endl;
-
-    std::string infix3 = "-3+4*-2/(1--5)^2^3";
-    std::string postfix3 = infixToPostfix(infix3);
-    std::cout << "Infix: " << infix3 << std::endl;
-    std::cout << "Postfix: " << postfix3 << std::endl;
-
+    runTests();
     return 0;
 }
